@@ -1,0 +1,62 @@
+import { getRequestContext, withConfiguredAppBasePath } from "@agent-native/core/server";
+
+// The Cube gate supplies the browser origin; never send local decks to upstream.
+
+function normalizeUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function configuredBaseUrl(): string | undefined {
+  const candidates = [
+    process.env.WORKSPACE_GATEWAY_URL,
+    process.env.APP_URL,
+    process.env.URL,
+    process.env.DEPLOY_URL,
+    process.env.BETTER_AUTH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate?.trim()) continue;
+    return normalizeUrl(candidate);
+  }
+
+  return undefined;
+}
+
+export function getSlidesAppUrl(): string {
+  const baseUrl = configuredBaseUrl() || getRequestContext()?.requestOrigin;
+  if (!baseUrl) return "";
+  return withConfiguredAppBasePath(baseUrl);
+}
+
+export function getDeckUrl(deckId: string): string {
+  return `${getSlidesAppUrl()}/deck/${deckId}`;
+}
+
+export function getExportUrl(
+  filename: string,
+  options?: {
+    deckId?: string;
+    includeNotes?: boolean;
+    exportRevision?: string;
+  },
+): string {
+  const appUrl = getSlidesAppUrl();
+  const url = new URL(
+    `${appUrl}/api/exports/${encodeURIComponent(filename)}`,
+    "https://cube-relative.invalid",
+  );
+  if (options?.deckId) url.searchParams.set("deckId", options.deckId);
+  if (options?.includeNotes !== undefined) {
+    url.searchParams.set("includeNotes", String(options.includeNotes));
+  }
+  if (options?.exportRevision) {
+    url.searchParams.set("exportRevision", options.exportRevision);
+  }
+  return appUrl ? url.toString() : `${url.pathname}${url.search}`;
+}

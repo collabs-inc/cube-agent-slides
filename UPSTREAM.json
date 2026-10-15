@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/BuilderIO/agent-native",
+  "revision": "6ac757a5ea3181158904e832f7a0a6c47c3694dd",
+  "path": "templates/slides",
+  "core": "0.209.0"
+}

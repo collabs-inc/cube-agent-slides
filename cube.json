@@ -1,0 +1,11 @@
+{
+  "name": "Agent-Native Slides",
+  "description": "Slides by Agent-Native, adapted for Cube with persistent local storage.",
+  "platforms": [
+    "linux",
+    "darwin"
+  ],
+  "install": "node cube/install.mjs",
+  "start": "node cube/start.mjs",
+  "icon": "public/favicon.svg"
+}
