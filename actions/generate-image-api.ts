@@ -1,3 +1,4 @@
+import { cubeImageFileId } from "../server/lib/cube-image-url.js";
 import { defineAction, fail } from "@agent-native/core/action";
 import { ssrfSafeFetch } from "@agent-native/core/extensions/url-safety";
 import { uploadFile } from "@agent-native/core/file-upload";
@@ -61,6 +62,7 @@ function parseGeneratedImageUrl(url: string | undefined): string {
       "Image generation did not return a parseable image URL for insertion",
     );
   }
+  if (cubeImageFileId(url)) return url;
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {

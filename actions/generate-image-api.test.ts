@@ -230,6 +230,62 @@ describe("generate-image-api", () => {
     });
   });
 
+  it("inserts and verifies a generated Cube image", async () => {
+    mockExtractAssetUrl.mockReturnValue("/api/cube-files/11111111-2222-4333-8444-555555555555");
+    const sourceContent =
+      '<div class="fmd-slide"><div class="fmd-img-placeholder">Hero</div></div>';
+    mockDelegateImageGenerationToAssets.mockResolvedValue({
+      status: "delegated",
+      reply: "previewUrl: /api/cube-files/11111111-2222-4333-8444-555555555555",
+      target: "https://assets.example.com",
+    });
+    mockGetDeckRun
+      .mockResolvedValueOnce(deckWithSlide(sourceContent))
+      .mockResolvedValueOnce(
+        deckWithSlide(
+          '<div class="fmd-slide"><img src="/api/cube-files/11111111-2222-4333-8444-555555555555"></div>',
+        ),
+      );
+    mockUpdateSlideRun.mockResolvedValue({ ok: true, applied: true });
+
+    const result = await action.run({
+      prompt: "a brand hero image",
+      deckId: "deck-1",
+      slideId: "slide-1",
+      insertIntoSlide: true,
+    });
+
+    expect(mockUpdateSlideRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deckId: "deck-1",
+        slideId: "slide-1",
+        preserveSource: true,
+        baseContentHash: hashSlideContent(sourceContent),
+        fullContent: expect.stringContaining(
+          'src="/api/cube-files/11111111-2222-4333-8444-555555555555"',
+        ),
+      }),
+    );
+    expect(mockGetDeckRun).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({
+      inserted: true,
+      url: "/api/cube-files/11111111-2222-4333-8444-555555555555",
+    });
+  });
+
+  it.each([
+    "/api/cube-files/../secret",
+    "/api/cube-files/%2e%2e/secret",
+    "/api/cube-files/11111111-2222-4333-8444-555555555555?path=secret",
+    "/api/cube-files/not-a-uuid",
+    "//evil.example/image.png",
+  ])("rejects malformed relative image URL %s", async (url) => {
+    mockDelegateImageGenerationToAssets.mockResolvedValue({ status: "delegated", reply: "generated", target: "https://assets.example.com" });
+    mockExtractAssetUrl.mockReturnValue(url);
+    await expect(action.run({ prompt: "hero", deckId: "deck-1", slideId: "slide-1", insertIntoSlide: true })).rejects.toThrow("parseable image URL");
+    expect(mockUpdateSlideRun).not.toHaveBeenCalled();
+  });
+
   it("rejects insertion when the target slide is missing", async () => {
     mockDelegateImageGenerationToAssets.mockResolvedValue({
       status: "delegated",

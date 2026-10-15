@@ -147,7 +147,7 @@ describe("export-pptx action", () => {
       { caller: "tool" } as never,
     );
 
-    const downloadUrl = new URL(result.downloadUrl);
+    const downloadUrl = new URL(result.downloadUrl, "http://cube.local");
     expect(downloadUrl.pathname).toBe(`/api/exports/${result.filename}`);
     expect(downloadUrl.searchParams.get("deckId")).toBe("deck-1");
     expect(downloadUrl.searchParams.get("includeNotes")).toBe("false");
@@ -246,7 +246,7 @@ describe("export-pptx action", () => {
       pptxDeckBindingPath(exportDir, filename),
       pptxExportRevisionKey("deck-1", null, "Deck", data, true),
     );
-    expect(new URL(result.downloadUrl).searchParams.get("exportRevision")).toBe(
+    expect(new URL(result.downloadUrl, "http://cube.local").searchParams.get("exportRevision")).toBe(
       pptxExportRevisionKey("deck-1", null, "Deck", data, true),
     );
   });
@@ -1620,5 +1620,35 @@ describe("applyDeckIdentity", () => {
         slideGradients: new Map([[7, "<a:gradFill/>"]]),
       }),
     ).rejects.toThrowError(/missing ppt\/slides\/slide8\.xml/);
+  });
+});
+
+
+describe("Cube image PowerPoint export", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("embeds actual locally uploaded PNG bytes in the exported PowerPoint", async () => {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { createCubeStorage } = await import("../server/lib/cube-storage.js");
+    const { default: JSZip } = await import("jszip");
+    const root = await mkdtemp(path.join(tmpdir(), "cube-pptx-test-"));
+    vi.stubEnv("CUBE_APP_DATA_DIR", root);
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfT0AAAAASUVORK5CYII=", "base64");
+    try {
+      const uploaded = await createCubeStorage(root).publicProvider.upload({ data: png, filename: "pixel.png", mimeType: "image/png" });
+      mocks.ssrfSafeFetch.mockReset();
+      mocks.resolveAccess.mockResolvedValue({ resource: { id: "cube-image-deck", title: "Cube image export", data: JSON.stringify({ slides: [{ id: "slide-1", content: `<div><img src="${uploaded.url}" style="width:100px;height:100px"></div>` }] }) } });
+      const result = await exportPptx.run({ deckId: "cube-image-deck", includeNotes: false }, { slidesPptxDownload: true } as never);
+      const zip = await JSZip.loadAsync(result.buffer!);
+      const media = Object.values(zip.files).filter(file => file.name.startsWith("ppt/media/") && !file.dir);
+      expect(media.length).toBeGreaterThan(0);
+      const embedded = await Promise.all(media.map(file => file.async("nodebuffer")));
+      expect(embedded.some(bytes => bytes.equals(png))).toBe(true);
+      expect(mocks.ssrfSafeFetch).not.toHaveBeenCalled();
+      const nonImage = await createCubeStorage(root).publicProvider.upload({ data: Buffer.from("secret"), filename: "text.txt", mimeType: "text/plain" });
+      expect(await fetchImageAsBase64(nonImage.url)).toBeNull();
+      expect(await fetchImageAsBase64("/api/cube-files/../secret")).toBeNull();
+      expect(mocks.ssrfSafeFetch).not.toHaveBeenCalled();
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 });

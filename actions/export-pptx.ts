@@ -1,3 +1,5 @@
+import { CUBE_FILES_PREFIX, getCubeStorage } from "../server/lib/cube-storage.js";
+import { cubeImageFileId } from "../server/lib/cube-image-url.js";
 import fs from "fs";
 import path from "path";
 
@@ -1611,6 +1613,13 @@ export async function fetchImageAsBase64(
   ownerEmail?: string,
 ): Promise<string | null> {
   try {
+    if (url.startsWith(CUBE_FILES_PREFIX)) {
+      const id = cubeImageFileId(url);
+      if (!id) return null;
+      const image = await getCubeStorage().readPublic(id);
+      if (!image.mimeType.toLowerCase().startsWith("image/")) return null;
+      return `data:${image.mimeType};base64,${image.data.toString("base64")}`;
+    }
     const parsedUrl = new URL(url, "http://slides.local");
     if (parsedUrl.pathname.startsWith("/api/import-assets/") && ownerEmail) {
       const token = parsedUrl.pathname.slice("/api/import-assets/".length);
